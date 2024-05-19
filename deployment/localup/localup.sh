@@ -53,6 +53,8 @@ function generate_genesis() {
       sp_size=$2
     fi
 
+    declare -a addrs=("0x00000be6819f41400225702d32d3dd23663dd690" "0x1111102dd32160b064f2a512cdef74bfdb6a9f96" "0x2222207b1f7b8d37566d9a2778732451dbfbc5d0")
+
     declare -a validator_addrs=()
     for ((i=0;i<${size};i++));do
         # export validator addresses
@@ -79,6 +81,11 @@ function generate_genesis() {
 
     mkdir -p ${workspace}/.local/gentx
     for ((i=0;i<${size};i++));do
+        for addr in "${addrs[@]}";do
+            # init genesis account in genesis state
+            ${bin} add-genesis-account $addr ${GENESIS_ACCOUNT_BALANCE}${STAKING_BOND_DENOM} --home ${workspace}/.local/validator${i}
+        done
+
         for validator_addr in "${validator_addrs[@]}";do
             # init genesis account in genesis state
             ${bin} add-genesis-account $validator_addr ${GENESIS_ACCOUNT_BALANCE}${STAKING_BOND_DENOM} --home ${workspace}/.local/validator${i}
@@ -133,7 +140,7 @@ function generate_genesis() {
         ${bin} collect-gentxs --home ${workspace}/.local/validator${i}
         node_ids="$(${bin} tendermint show-node-id --home ${workspace}/.local/validator${i})@127.0.0.1:$((${VALIDATOR_P2P_PORT_START}+${i})) ${node_ids}"
     done
-
+    echo "=============================================="
     # generate sp to genesis
     generate_sp_genesis $size $sp_size
 
@@ -171,6 +178,7 @@ function generate_genesis() {
         sed -i -e "s/\"update_price_disallowed_days\": 2/\"update_price_disallowed_days\": 0/g" ${workspace}/.local/validator${i}/config/genesis.json
         #sed -i -e "s/\"community_tax\": \"0.020000000000000000\"/\"community_tax\": \"0\"/g" ${workspace}/.local/validator${i}/config/genesis.json
         sed -i -e "s/log_level = \"info\"/\log_level= \"debug\"/g" ${workspace}/.local/validator${i}/config/config.toml
+        sed -i -e "s/cors_allowed_origins = \[\]/cors_allowed_origins = \[\"*\"\]/g" ${workspace}/.local/validator${i}/config/config.toml
         echo -e '[[upgrade]]\nname = "Nagqu"\nheight = 20\ninfo = ""' >> ${workspace}/.local/validator${i}/config/app.toml
         echo -e '[[upgrade]]\nname = "Pampas"\nheight = 20\ninfo = ""' >> ${workspace}/.local/validator${i}/config/app.toml
         echo -e '[[upgrade]]\nname = "Manchurian"\nheight = 20\ninfo = ""' >> ${workspace}/.local/validator${i}/config/app.toml
@@ -196,11 +204,13 @@ function start() {
         mkdir -p ${workspace}/.local/validator${i}/logs
         nohup ${bin} start --home ${workspace}/.local/validator${i} \
             --address 0.0.0.0:$((${VALIDATOR_ADDRESS_PORT_START}+${i})) \
+            --api.enabled-unsafe-cors true \
             --api.address tcp://0.0.0.0:$((${VALIDATOR_GRPC_WEB_PORT_START}+${i})) \
             --grpc.address 0.0.0.0:$((${VALIDATOR_GRPC_PORT_START}+${i})) \
             --p2p.laddr tcp://0.0.0.0:$((${VALIDATOR_P2P_PORT_START}+${i})) \
             --p2p.external-address 127.0.0.1:$((${VALIDATOR_P2P_PORT_START}+${i})) \
             --rpc.laddr tcp://0.0.0.0:$((${VALIDATOR_RPC_PORT_START}+${i})) \
+            --rpc.unsafe true \
             --log_format json > ${workspace}/.local/validator${i}/logs/node.log &
     done
 }
